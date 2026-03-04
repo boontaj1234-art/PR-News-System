@@ -1,0 +1,8 @@
+{
+  "name": "PR News System",
+  "description": "ระบบจัดเก็บข้อมูลภาพและข่าวประชาสัมพันธ์ ทันสมัย รองรับหลายอุปกรณ์ พร้อมระบบแอดมิน",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
