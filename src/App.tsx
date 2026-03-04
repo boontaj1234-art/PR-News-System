@@ -1234,7 +1234,9 @@ export default function App() {
       const res = await fetch('/api/news');
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || `Server error: ${res.status}`);
+        const msg = errorData.error || errorData.message || `Server error: ${res.status}`;
+        const details = errorData.details ? `: ${errorData.details}` : '';
+        throw new Error(msg + details);
       }
       const data = await res.json();
       setNews(data);

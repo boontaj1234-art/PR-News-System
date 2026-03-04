@@ -6,7 +6,10 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const GS_URL = process.env.GS_WEBAPP_URL || "https://script.google.com/macros/s/AKfycbwtlZA4QcQ1XoTTXs9Y5RY9448mDbX-v135uiJ6qXA0zyuw0_xOe5Vfa2twahL4ttCh/exec";
+const GS_WEBAPP_URL_DEFAULT = "https://script.google.com/macros/s/AKfycbwtlZA4QcQ1XoTTXs9Y5RY9448mDbX-v135uiJ6qXA0zyuw0_xOe5Vfa2twahL4ttCh/exec";
+const GS_URL = (process.env.GS_WEBAPP_URL && process.env.GS_WEBAPP_URL.trim() !== "") 
+  ? process.env.GS_WEBAPP_URL 
+  : GS_WEBAPP_URL_DEFAULT;
 
 export async function createApp() {
   const app = express();
@@ -14,10 +17,32 @@ export async function createApp() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.static(path.join(__dirname, "public")));
 
+  const fetchWithTimeout = async (url: string, options: any = {}) => {
+    const { timeout = 15000 } = options;
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          ...options.headers,
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        }
+      });
+      clearTimeout(id);
+      return response;
+    } catch (error) {
+      clearTimeout(id);
+      throw error;
+    }
+  };
+
   // API Routes
   app.get("/api/debug", (req, res) => {
     res.json({ 
       GS_URL_START: GS_URL ? GS_URL.substring(0, 30) + "..." : "NOT SET",
+      IS_DEFAULT: GS_URL === GS_WEBAPP_URL_DEFAULT,
       NODE_ENV: process.env.NODE_ENV,
       VERCEL: process.env.VERCEL,
       TIME: new Date().toISOString()
@@ -31,15 +56,22 @@ export async function createApp() {
   app.post("/api/login", async (req, res) => {
     const { username, password } = req.body;
     try {
-      const gsResponse = await fetch(`${GS_URL}?action=login&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`);
-      const gsData = await gsResponse.json();
+      const gsResponse = await fetchWithTimeout(`${GS_URL}?action=login&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`);
+      const responseText = await gsResponse.text();
+      let gsData;
+      try {
+        gsData = JSON.parse(responseText);
+      } catch (e) {
+        console.error("Login GS Response is not JSON:", responseText.substring(0, 500));
+        return res.status(500).json({ error: "Google Script returned invalid JSON", details: responseText.substring(0, 100) });
+      }
       
       if (gsData.status === "success") {
         res.json(gsData);
       } else {
         res.status(401).json(gsData);
       }
-    } catch (err) {
+    } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
@@ -47,13 +79,28 @@ export async function createApp() {
   app.get("/api/news", async (req, res) => {
     console.log("Fetching news from GS_URL:", GS_URL.substring(0, 30) + "...");
     try {
-      const gsResponse = await fetch(GS_URL);
+      const gsResponse = await fetchWithTimeout(GS_URL);
       if (!gsResponse.ok) {
-        console.error(`GS_URL returned status ${gsResponse.status}`);
-        return res.status(gsResponse.status).json({ error: `Google Script error: ${gsResponse.status}` });
+        const errorText = await gsResponse.text().catch(() => "No error text");
+        console.error(`GS_URL returned status ${gsResponse.status}: ${errorText.substring(0, 200)}`);
+        return res.status(gsResponse.status).json({ 
+          error: `Google Script error: ${gsResponse.status}`,
+          details: errorText.substring(0, 100)
+        });
       }
       
-      const gsData = await gsResponse.json();
+      let gsData;
+      const responseText = await gsResponse.text();
+      try {
+        gsData = JSON.parse(responseText);
+      } catch (jsonErr) {
+        console.error("GS Response is not JSON. Response text:", responseText.substring(0, 500));
+        return res.status(500).json({ 
+          error: "Google Script returned invalid JSON", 
+          details: responseText.substring(0, 100) 
+        });
+      }
+
       console.log(`Received ${Array.isArray(gsData) ? gsData.length : 'non-array'} items from GS`);
 
       if (!Array.isArray(gsData)) {
@@ -81,22 +128,33 @@ export async function createApp() {
       });
       
       res.json(mappedData);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error fetching news:", err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ 
+        error: "Internal Server Error", 
+        message: err.message,
+        details: "Check Vercel logs for more info"
+      });
     }
   });
 
   app.post("/api/news", async (req, res) => {
     try {
-      const gsResponse = await fetch(GS_URL, {
+      const gsResponse = await fetchWithTimeout(GS_URL, {
         method: "POST",
         body: JSON.stringify({ ...req.body, action: "add" }),
         headers: { "Content-Type": "application/json" }
       });
-      const gsData = await gsResponse.json();
+      const responseText = await gsResponse.text();
+      let gsData;
+      try {
+        gsData = JSON.parse(responseText);
+      } catch (e) {
+        console.error("Add News GS Response is not JSON:", responseText.substring(0, 500));
+        return res.status(500).json({ error: "Google Script returned invalid JSON", details: responseText.substring(0, 100) });
+      }
       res.json(gsData);
-    } catch (err) {
+    } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
@@ -104,28 +162,42 @@ export async function createApp() {
   app.delete("/api/news/doc/:doc_id", async (req, res) => {
     const { doc_id } = req.params;
     try {
-      const gsResponse = await fetch(GS_URL, {
+      const gsResponse = await fetchWithTimeout(GS_URL, {
         method: "POST",
         body: JSON.stringify({ action: "delete", doc_id }),
         headers: { "Content-Type": "application/json" }
       });
-      const gsData = await gsResponse.json();
+      const responseText = await gsResponse.text();
+      let gsData;
+      try {
+        gsData = JSON.parse(responseText);
+      } catch (e) {
+        console.error("Delete News GS Response is not JSON:", responseText.substring(0, 500));
+        return res.status(500).json({ error: "Google Script returned invalid JSON", details: responseText.substring(0, 100) });
+      }
       res.json(gsData);
-    } catch (err) {
+    } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
   app.put("/api/news/:id", async (req, res) => {
     try {
-      const gsResponse = await fetch(GS_URL, {
+      const gsResponse = await fetchWithTimeout(GS_URL, {
         method: "POST",
         body: JSON.stringify({ ...req.body, action: "edit" }),
         headers: { "Content-Type": "application/json" }
       });
-      const gsData = await gsResponse.json();
+      const responseText = await gsResponse.text();
+      let gsData;
+      try {
+        gsData = JSON.parse(responseText);
+      } catch (e) {
+        console.error("Edit News GS Response is not JSON:", responseText.substring(0, 500));
+        return res.status(500).json({ error: "Google Script returned invalid JSON", details: responseText.substring(0, 100) });
+      }
       res.json(gsData);
-    } catch (err) {
+    } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
