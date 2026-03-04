@@ -15,6 +15,15 @@ export async function createApp() {
   app.use(express.static(path.join(__dirname, "public")));
 
   // API Routes
+  app.get("/api/debug", (req, res) => {
+    res.json({ 
+      GS_URL_START: GS_URL ? GS_URL.substring(0, 30) + "..." : "NOT SET",
+      NODE_ENV: process.env.NODE_ENV,
+      VERCEL: process.env.VERCEL,
+      TIME: new Date().toISOString()
+    });
+  });
+
   app.get("/api/config", (req, res) => {
     res.json({ hasGsUrl: !!GS_URL });
   });
@@ -36,12 +45,23 @@ export async function createApp() {
   });
 
   app.get("/api/news", async (req, res) => {
+    console.log("Fetching news from GS_URL:", GS_URL.substring(0, 30) + "...");
     try {
       const gsResponse = await fetch(GS_URL);
+      if (!gsResponse.ok) {
+        console.error(`GS_URL returned status ${gsResponse.status}`);
+        return res.status(gsResponse.status).json({ error: `Google Script error: ${gsResponse.status}` });
+      }
+      
       const gsData = await gsResponse.json();
+      console.log(`Received ${Array.isArray(gsData) ? gsData.length : 'non-array'} items from GS`);
+
+      if (!Array.isArray(gsData)) {
+        console.error("GS Data is not an array:", gsData);
+        return res.json([]);
+      }
       
       // Map GS headers to NewsItem interface
-      // Headers: ["ที่", "เลขที่", "วัน/เดือน/ปี", "เรื่อง/กิจกรรม", "เนื้อข่าว", "รูป", "หมายเหตุ"]
       const mappedData = gsData.map((item: any, index: number) => ({
         id: index + 1,
         doc_id: item["เลขที่"] || "",
@@ -53,9 +73,16 @@ export async function createApp() {
         created_at: item["วัน/เดือน/ปี"] || ""
       }));
 
-      mappedData.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      mappedData.sort((a: any, b: any) => {
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        if (isNaN(dateA) || isNaN(dateB)) return 0;
+        return dateB - dateA;
+      });
+      
       res.json(mappedData);
     } catch (err) {
+      console.error("Error fetching news:", err);
       res.status(500).json({ error: err.message });
     }
   });

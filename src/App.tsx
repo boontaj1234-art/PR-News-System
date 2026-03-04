@@ -508,16 +508,34 @@ const UserView = ({ news }: { news: NewsItem[] }) => {
     { value: '12', label: 'ธันวาคม' },
   ];
 
+  const parseThaiDate = (dateStr: string) => {
+    if (!dateStr) return new Date(NaN);
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) return d;
+    
+    const parts = dateStr.split('/');
+    if (parts.length === 3) {
+      const day = parseInt(parts[0]);
+      const month = parseInt(parts[1]) - 1;
+      let year = parseInt(parts[2]);
+      if (year > 2400) year -= 543;
+      return new Date(year, month, day);
+    }
+    return new Date(NaN);
+  };
+
   const years = Array.from(new Set(news.map(item => {
-    const date = new Date(item.date);
-    return date.getFullYear().toString();
-  }))).sort((a, b) => b.localeCompare(a));
+    const date = parseThaiDate(item.date);
+    return isNaN(date.getFullYear()) ? "" : date.getFullYear().toString();
+  }))).filter(y => y !== "").sort((a, b) => b.localeCompare(a));
 
   const filteredNews = news.filter(item => {
     const matchesSearch = item.title.toLowerCase().includes(search.toLowerCase()) ||
                          item.doc_id.toLowerCase().includes(search.toLowerCase());
     
-    const itemDate = new Date(item.date);
+    const itemDate = parseThaiDate(item.date);
+    if (isNaN(itemDate.getTime())) return matchesSearch && filterMonth === '' && filterYear === '';
+
     const itemMonth = (itemDate.getMonth() + 1).toString().padStart(2, '0');
     const itemYear = itemDate.getFullYear().toString();
     
@@ -1208,14 +1226,21 @@ export default function App() {
   });
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchNews = async () => {
     try {
+      setError(null);
       const res = await fetch('/api/news');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Server error: ${res.status}`);
+      }
       const data = await res.json();
       setNews(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setError(err.message || 'ไม่สามารถโหลดข้อมูลได้');
     } finally {
       setLoading(false);
     }
@@ -1250,6 +1275,17 @@ export default function App() {
           <div className="flex flex-col items-center justify-center py-40 text-slate-400">
             <Loader2 className="animate-spin mb-4" size={40} />
             <p className="font-medium">กำลังโหลดข้อมูล...</p>
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center py-40 text-red-500">
+            <X size={48} className="mb-4 opacity-50" />
+            <p className="text-lg font-medium">{error}</p>
+            <button 
+              onClick={fetchNews} 
+              className="mt-4 px-6 py-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-colors"
+            >
+              ลองใหม่อีกครั้ง
+            </button>
           </div>
         ) : (
           <AnimatePresence mode="wait">
