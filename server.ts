@@ -8,9 +8,8 @@ const __dirname = path.dirname(__filename);
 
 const GS_URL = process.env.GS_WEBAPP_URL || "https://script.google.com/macros/s/AKfycbwtlZA4QcQ1XoTTXs9Y5RY9448mDbX-v135uiJ6qXA0zyuw0_xOe5Vfa2twahL4ttCh/exec";
 
-async function startServer() {
+export async function createApp() {
   const app = express();
-  const PORT = 3000;
 
   app.use(express.json({ limit: "50mb" }));
   app.use(express.static(path.join(__dirname, "public")));
@@ -105,7 +104,7 @@ async function startServer() {
   });
 
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -118,9 +117,15 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  return app;
 }
 
-startServer();
+// Only start the server if this file is run directly (not imported)
+if (import.meta.url === `file://${process.argv[1]}` || !process.env.VERCEL) {
+  const PORT = 3000;
+  createApp().then(app => {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  });
+}
