@@ -6,7 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const GS_URL = process.env.GS_WEBAPP_URL || "https://script.google.com/macros/s/AKfycbwtlZA4QcQ1XoTTXs9Y5RY9448mDbX-v135uiJ6qXA0zyuw0_xOe5Vfa2twahL4ttCh/exec";
+const GS_URL = process.env.GS_WEBAPP_URL || "https://script.google.com/macros/s/AKfycby-DFLkO_IAenG3NStjKA2t0XMm4tTOExgZ1rwBodzqnB6W29EwVT23vktPCSUCyJvX/exec";
 
 app.use(express.json({ limit: "50mb" }));
 
