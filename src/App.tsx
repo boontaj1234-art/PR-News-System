@@ -1233,10 +1233,17 @@ export default function App() {
       setError(null);
       const res = await fetch('/api/news');
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        const msg = errorData.error || errorData.message || `Server error: ${res.status}`;
-        const details = errorData.details ? `: ${errorData.details}` : '';
-        throw new Error(msg + details);
+        let msg = `Server error: ${res.status}`;
+        try {
+          const errorData = await res.json();
+          msg = errorData.error || errorData.message || msg;
+          if (errorData.details) msg += ` (${errorData.details})`;
+        } catch (e) {
+          // If not JSON, try to get text
+          const text = await res.text().catch(() => "");
+          if (text) msg += ` - ${text.substring(0, 100)}`;
+        }
+        throw new Error(msg);
       }
       const data = await res.json();
       setNews(data);

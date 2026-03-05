@@ -18,10 +18,11 @@ export async function createApp() {
   app.use(express.static(path.join(__dirname, "public")));
 
   const fetchWithTimeout = async (url: string, options: any = {}) => {
-    const { timeout = 15000 } = options;
+    const { timeout = 8000 } = options; // Reduced to 8s to stay under Vercel's 10s limit
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
     try {
+      console.log(`Fetching: ${url.substring(0, 60)}... (timeout: ${timeout}ms)`);
       const response = await fetch(url, {
         ...options,
         signal: controller.signal,
@@ -32,8 +33,11 @@ export async function createApp() {
       });
       clearTimeout(id);
       return response;
-    } catch (error) {
+    } catch (error: any) {
       clearTimeout(id);
+      if (error.name === 'AbortError') {
+        throw new Error(`Request timed out after ${timeout}ms`);
+      }
       throw error;
     }
   };
@@ -131,9 +135,9 @@ export async function createApp() {
     } catch (err: any) {
       console.error("Error fetching news:", err);
       res.status(500).json({ 
-        error: "Internal Server Error", 
+        error: "Backend Fetch Error", 
         message: err.message,
-        details: "Check Vercel logs for more info"
+        details: "This usually happens if the Google Script is slow or the URL is incorrect."
       });
     }
   });
