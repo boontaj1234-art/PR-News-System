@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const GS_WEBAPP_URL_DEFAULT = "https://script.google.com/macros/s/AKfycbwtlZA4QcQ1XoTTXs9Y5RY9448mDbX-v135uiJ6qXA0zyuw0_xOe5Vfa2twahL4ttCh/exec";
+const GS_WEBAPP_URL_DEFAULT = "https://script.google.com/macros/s/AKfycbyrtTvNYAKmUr9c7KlTu-oIal9dEguurWyJhp9DkYxrYXQnETGGgUu2HnQk1YqdepCN/exec";
 const GS_URL = (process.env.GS_WEBAPP_URL && process.env.GS_WEBAPP_URL.trim() !== "") 
   ? process.env.GS_WEBAPP_URL 
   : GS_WEBAPP_URL_DEFAULT;
